@@ -1,4 +1,5 @@
 import { useMemo, useState, useRef, useCallback, useEffect, memo, type CSSProperties } from 'react';
+import { useSharedState } from '@/lib/hotel-sync';
 import { createPortal } from 'react-dom';
 import { addDays, subDays, format, differenceInCalendarDays, isSameDay, parseISO, startOfDay, isBefore } from 'date-fns';
 import { BOOKING_STATUSES, type Booking, type BookingStatus, isRoomDirty } from '@/types/hotel';
@@ -251,8 +252,29 @@ export function HotelRoomGrid({ bookings, conflictBookings = bookings, onAddBook
   const [futureDays, setFutureDays] = useState(INITIAL_FUTURE_DAYS);
   const [collapsedCategories, setCollapsedCategories] = useState<Record<string, boolean>>({});
   const [expandedRooms, setExpandedRooms] = useState<Record<number, boolean>>({});
-  const [personNames, setPersonNames] = useState<PersonNames>({});
-  const [extraPersons, setExtraPersons] = useState<ExtraPersons>({});
+const [personNames, setPersonNames] = useState<PersonNames>({});
+  const { data: extraPersons, setData: setExtraPersonsShared } = useSharedState<ExtraPersons>('guests', {});
+  const setExtraPersons = useCallback(
+    (updater: ExtraPersons | ((prev: ExtraPersons) => ExtraPersons)) => {
+      setExtraPersonsShared(updater);
+    },
+    [setExtraPersonsShared],
+  );
+  // Auto-expand rooms that have extra guests added by any user/browser
+  useEffect(() => {
+    setExpandedRooms((prev) => {
+      const next = { ...prev };
+      let changed = false;
+      for (const [roomNumStr, count] of Object.entries(extraPersons)) {
+        const roomNum = Number(roomNumStr);
+        if (count > 0 && !next[roomNum]) {
+          next[roomNum] = true;
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [extraPersons]);
   const [deletedPersonSlots, setDeletedPersonSlots] = useState<Record<number, Set<number>>>({});
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
   const [addCategoryOpen, setAddCategoryOpen] = useState(false);
@@ -273,7 +295,7 @@ export function HotelRoomGrid({ bookings, conflictBookings = bookings, onAddBook
   const addExtraPerson = useCallback((roomNumber: number) => {
     setExtraPersons(prev => ({ ...prev, [roomNumber]: (prev[roomNumber] || 0) + 1 }));
     setExpandedRooms(prev => ({ ...prev, [roomNumber]: true }));
-  }, []);
+  }, [setExtraPersons]);
   const removeExtraPerson = useCallback((roomNumber: number, personIdx: number) => {
     setExtraPersons(prev => ({ ...prev, [roomNumber]: Math.max(0, (prev[roomNumber] || 0) - 1) }));
     setPersonNames(prev => {
@@ -281,7 +303,7 @@ export function HotelRoomGrid({ bookings, conflictBookings = bookings, onAddBook
       delete copy[personIdx];
       return { ...prev, [roomNumber]: copy };
     });
-  }, []);
+  }, [setExtraPersons]);
 
   const confirmDelete = useCallback(() => {
     if (!deleteTarget) return;

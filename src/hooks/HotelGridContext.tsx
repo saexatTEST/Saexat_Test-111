@@ -64,12 +64,19 @@ export function pickRate(rates: Record<string, CategoryRate>, categoryId: string
   return Number(arr[guestIndex]) || 0;
 }
 
+export type PersonNames = Record<number, Record<number, string>>;
+export type ExtraPersons = Record<number, number>;
+export type DeletedPersonSlots = Record<number, number[]>; // arrays for JSON
+
 interface GridState {
   extraCategories: CategoryDef[];
   removedCategoryIds: string[];
   removedRoomNumbers: number[];
   extraRooms: Room[];
   categoryRates: Record<string, CategoryRate>;
+  personNames: PersonNames;
+  extraPersons: ExtraPersons;
+  deletedPersonSlots: DeletedPersonSlots;
 }
 
 const INITIAL: GridState = {
@@ -78,18 +85,30 @@ const INITIAL: GridState = {
   removedRoomNumbers: [],
   extraRooms: [],
   categoryRates: {},
+  personNames: {},
+  extraPersons: {},
+  deletedPersonSlots: {},
 };
+
 
 interface Ctx {
   categories: CategoryDef[];
   rooms: Room[];
   categoryRates: Record<string, CategoryRate>;
+  personNames: PersonNames;
+  extraPersons: ExtraPersons;
+  deletedPersonSlots: Record<number, Set<number>>;
   addCategory: (input: { name: string; short: string; maxGuests: number }) => void;
   removeCategory: (id: string) => void;
   addRoom: (categoryId: string, roomNumber: number) => { ok: boolean; reason?: 'exists' | 'invalid' };
   removeRoom: (roomNumber: number) => void;
   setCategoryRate: (categoryId: string, rate: CategoryRate) => void;
+  updatePersonName: (roomNumber: number, personIdx: number, name: string) => void;
+  addExtraPerson: (roomNumber: number) => void;
+  removeExtraPerson: (roomNumber: number, personIdx: number) => void;
+  deleteBasePersonSlot: (roomNumber: number, personIdx: number) => void;
 }
+
 
 const HotelGridContext = createContext<Ctx | null>(null);
 
@@ -201,3 +220,4 @@ export function useHotelGrid() {
   if (!ctx) throw new Error('useHotelGrid must be used inside HotelGridProvider');
   return ctx;
 }
+
