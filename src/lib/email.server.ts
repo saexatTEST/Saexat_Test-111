@@ -13,39 +13,39 @@ const emailSchema = z.object({
   hotelAddress: z.string().default("115A Buyuk Ipak Yuli St, Mirzo Ulug'bek district, Tashkent"),
 });
 
-export const sendBookingConfirmationEmail = createServerOnlyFn(
-  createServerFn({ method: "POST" })
-    .inputValidator((input) => emailSchema.parse(input))
-    .handler(async ({ data }) => {
-      const apiKey = process.env.RESEND_API_KEY;
-      const from = process.env.EMAIL_FROM || "onboarding@resend.dev";
+const _sendBookingConfirmationEmailFn = createServerFn({ method: "POST" })
+  .inputValidator((input) => emailSchema.parse(input))
+  .handler(async ({ data }) => {
+    const apiKey = process.env.RESEND_API_KEY;
+    const from = process.env.EMAIL_FROM || "onboarding@resend.dev";
 
-      if (!apiKey) {
-        console.warn("[email] RESEND_API_KEY not set — skipping email");
-        return { sent: false };
+    if (!apiKey) {
+      console.warn("[email] RESEND_API_KEY not set — skipping email");
+      return { sent: false };
+    }
+
+    const { Resend } = await import("resend");
+    const resend = new Resend(apiKey);
+
+    const formatDate = (iso: string) => {
+      try {
+        return new Date(iso + "T00:00:00").toLocaleDateString("ru-RU", {
+          day: "2-digit",
+          month: "long",
+          year: "numeric",
+        });
+      } catch {
+        return iso;
       }
+    };
+    export const sendBookingConfirmationEmail = createServerOnlyFn(_sendBookingConfirmationEmailFn);
+    
+    const nights = Math.ceil(
+      (new Date(data.checkOut).getTime() - new Date(data.checkIn).getTime()) /
+        86400000
+    );
 
-      const { Resend } = await import("resend");
-      const resend = new Resend(apiKey);
-
-      const formatDate = (iso: string) => {
-        try {
-          return new Date(iso + "T00:00:00").toLocaleDateString("ru-RU", {
-            day: "2-digit",
-            month: "long",
-            year: "numeric",
-          });
-        } catch {
-          return iso;
-        }
-      };
-
-      const nights = Math.ceil(
-        (new Date(data.checkOut).getTime() - new Date(data.checkIn).getTime()) /
-          86400000
-      );
-
-      const html = `
+    const html = `
 <!DOCTYPE html>
 <html lang="ru">
 <head>
@@ -58,7 +58,7 @@ export const sendBookingConfirmationEmail = createServerOnlyFn(
     <tr>
       <td align="center">
         <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#1a1a24;border-radius:20px;overflow:hidden;border:1px solid rgba(255,255,255,0.08);">
-          
+
           <tr>
             <td style="background:linear-gradient(135deg,#c9a84c,#e8c97a);padding:32px 40px;text-align:center;">
               <h1 style="margin:0;color:#0f0f13;font-size:28px;font-weight:800;letter-spacing:-0.5px;">
@@ -159,25 +159,26 @@ export const sendBookingConfirmationEmail = createServerOnlyFn(
   </table>
 </body>
 </html>
-      `;
+    `;
 
-      try {
-        const { error } = await resend.emails.send({
-          from,
-          to: data.to,
-          subject: `✅ Бронирование подтверждено — Номер ${data.roomNumber} · ${data.hotelName}`,
-          html,
-        });
+    try {
+      const { error } = await resend.emails.send({
+        from,
+        to: data.to,
+        subject: `✅ Бронирование подтверждено — Номер ${data.roomNumber} · ${data.hotelName}`,
+        html,
+      });
 
-        if (error) {
-          console.error("[email] Resend error:", error);
-          return { sent: false };
-        }
-
-        return { sent: true };
-      } catch (err) {
-        console.error("[email] unexpected error:", err);
+      if (error) {
+        console.error("[email] Resend error:", error);
         return { sent: false };
       }
-    })
-);
+
+      return { sent: true };
+    } catch (err) {
+      console.error("[email] unexpected error:", err);
+      return { sent: false };
+    }
+  });
+
+export const sendBookingConfirmationEmail = createServerOnlyFn(_sendBookingConfirmationEmailFn);
