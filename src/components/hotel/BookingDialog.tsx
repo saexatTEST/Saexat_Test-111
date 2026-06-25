@@ -28,7 +28,7 @@ import { Receipt } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useHotelGrid } from '@/hooks/HotelGridContext';
 import { ChevronDown } from 'lucide-react';
-
+import { sendBookingConfirmationEmail } from '@/lib/email.server';
 
 const nextDay = (iso: string) => format(addDays(parseISO(iso), 1), 'yyyy-MM-dd');
 const prevDay = (iso: string) => format(addDays(parseISO(iso), -1), 'yyyy-MM-dd');
@@ -313,7 +313,8 @@ export function BookingDialog({
       : isManagerOnly
         ? (editBooking?.price)
         : manualPrice;
-    if (editBooking && onUpdate) {
+if (editBooking && onUpdate) {
+      const prevStatus = editBooking.status;
       const ok = onUpdate(editBooking.id, {
         guestName: fullName, ...nameFields,
         guestPhone, guestEmail, guestWhatsapp, guestTelegram, guestInstagram,
@@ -324,6 +325,28 @@ export function BookingDialog({
         paymentConfirmedAt: paymentConfirmed ? (editBooking.paymentConfirmedAt || new Date().toISOString()) : undefined,
       });
       if (ok === false) return;
+
+      // Send confirmation email when status changes TO 'booked' and guest has email
+      const emailToSend = guestEmail.trim();
+      if (
+        finalStatus === 'booked' &&
+        prevStatus !== 'booked' &&
+        emailToSend &&
+        emailToSend.includes('@')
+      ) {
+        const catLabel = roomCategory?.label[lang] || roomCategory?.label.en || '';
+        sendBookingConfirmationEmail({
+          data: {
+            to: emailToSend,
+            guestName: fullName,
+            roomNumber,
+            roomCategory: catLabel,
+            checkIn: effectiveIn,
+            checkOut: effectiveOut,
+            guestCount,
+          },
+        }).catch((err) => console.error('[email] failed to send:', err));
+      }
     } else {
       const ok = onSave({
         id: crypto.randomUUID(), roomNumber, guestName: fullName, ...nameFields,
