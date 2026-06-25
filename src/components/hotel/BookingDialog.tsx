@@ -28,7 +28,7 @@ import { Receipt } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useHotelGrid } from '@/hooks/HotelGridContext';
 import { ChevronDown } from 'lucide-react';
-import { sendBookingConfirmationEmail } from '@/lib/email.server';
+import { sendBookingConfirmationEmail } from '@/lib/email-client';
 
 const nextDay = (iso: string) => format(addDays(parseISO(iso), 1), 'yyyy-MM-dd');
 const prevDay = (iso: string) => format(addDays(parseISO(iso), -1), 'yyyy-MM-dd');

@@ -1,4 +1,4 @@
-import { createServerFn } from "@tanstack/react-start";
+import { createServerFn, createServerOnlyFn } from "@tanstack/react-start";
 import { z } from "zod";
 
 const emailSchema = z.object({
@@ -13,38 +13,39 @@ const emailSchema = z.object({
   hotelAddress: z.string().default("115A Buyuk Ipak Yuli St, Mirzo Ulug'bek district, Tashkent"),
 });
 
-export const sendBookingConfirmationEmail = createServerFn({ method: "POST" })
-  .inputValidator((input) => emailSchema.parse(input))
-  .handler(async ({ data }) => {
-    const apiKey = process.env.RESEND_API_KEY;
-    const from = process.env.EMAIL_FROM || "onboarding@resend.dev";
+export const sendBookingConfirmationEmail = createServerOnlyFn(
+  createServerFn({ method: "POST" })
+    .inputValidator((input) => emailSchema.parse(input))
+    .handler(async ({ data }) => {
+      const apiKey = process.env.RESEND_API_KEY;
+      const from = process.env.EMAIL_FROM || "onboarding@resend.dev";
 
-    if (!apiKey) {
-      console.warn("[email] RESEND_API_KEY not set — skipping email");
-      return { sent: false };
-    }
-
-    const { Resend } = await import("resend");
-    const resend = new Resend(apiKey);
-
-    const formatDate = (iso: string) => {
-      try {
-        return new Date(iso + "T00:00:00").toLocaleDateString("ru-RU", {
-          day: "2-digit",
-          month: "long",
-          year: "numeric",
-        });
-      } catch {
-        return iso;
+      if (!apiKey) {
+        console.warn("[email] RESEND_API_KEY not set — skipping email");
+        return { sent: false };
       }
-    };
 
-    const nights = Math.ceil(
-      (new Date(data.checkOut).getTime() - new Date(data.checkIn).getTime()) /
-        86400000
-    );
+      const { Resend } = await import("resend");
+      const resend = new Resend(apiKey);
 
-    const html = `
+      const formatDate = (iso: string) => {
+        try {
+          return new Date(iso + "T00:00:00").toLocaleDateString("ru-RU", {
+            day: "2-digit",
+            month: "long",
+            year: "numeric",
+          });
+        } catch {
+          return iso;
+        }
+      };
+
+      const nights = Math.ceil(
+        (new Date(data.checkOut).getTime() - new Date(data.checkIn).getTime()) /
+          86400000
+      );
+
+      const html = `
 <!DOCTYPE html>
 <html lang="ru">
 <head>
@@ -58,7 +59,6 @@ export const sendBookingConfirmationEmail = createServerFn({ method: "POST" })
       <td align="center">
         <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#1a1a24;border-radius:20px;overflow:hidden;border:1px solid rgba(255,255,255,0.08);">
           
-          <!-- Header -->
           <tr>
             <td style="background:linear-gradient(135deg,#c9a84c,#e8c97a);padding:32px 40px;text-align:center;">
               <h1 style="margin:0;color:#0f0f13;font-size:28px;font-weight:800;letter-spacing:-0.5px;">
@@ -70,7 +70,6 @@ export const sendBookingConfirmationEmail = createServerFn({ method: "POST" })
             </td>
           </tr>
 
-          <!-- Body -->
           <tr>
             <td style="padding:36px 40px;">
 
@@ -81,7 +80,6 @@ export const sendBookingConfirmationEmail = createServerFn({ method: "POST" })
                 Ваше бронирование в отеле <strong style="color:#e2e2e2;">${data.hotelName}</strong> успешно подтверждено. Ниже приведены детали вашего проживания.
               </p>
 
-              <!-- Booking details card -->
               <table width="100%" cellpadding="0" cellspacing="0" style="background:#12121a;border-radius:14px;border:1px solid rgba(255,255,255,0.07);overflow:hidden;margin-bottom:28px;">
                 <tr>
                   <td style="padding:20px 24px;border-bottom:1px solid rgba(255,255,255,0.06);">
@@ -126,7 +124,6 @@ export const sendBookingConfirmationEmail = createServerFn({ method: "POST" })
                 </tr>
               </table>
 
-              <!-- Hotel address -->
               <table width="100%" cellpadding="0" cellspacing="0" style="background:#12121a;border-radius:14px;border:1px solid rgba(255,255,255,0.07);padding:18px 24px;margin-bottom:28px;">
                 <tr>
                   <td>
@@ -145,7 +142,6 @@ export const sendBookingConfirmationEmail = createServerFn({ method: "POST" })
             </td>
           </tr>
 
-          <!-- Footer -->
           <tr>
             <td style="background:#12121a;padding:20px 40px;text-align:center;border-top:1px solid rgba(255,255,255,0.06);">
               <p style="margin:0;color:#3d3d52;font-size:12px;">
@@ -163,24 +159,25 @@ export const sendBookingConfirmationEmail = createServerFn({ method: "POST" })
   </table>
 </body>
 </html>
-    `;
+      `;
 
-    try {
-      const { error } = await resend.emails.send({
-        from,
-        to: data.to,
-        subject: `✅ Бронирование подтверждено — Номер ${data.roomNumber} · ${data.hotelName}`,
-        html,
-      });
+      try {
+        const { error } = await resend.emails.send({
+          from,
+          to: data.to,
+          subject: `✅ Бронирование подтверждено — Номер ${data.roomNumber} · ${data.hotelName}`,
+          html,
+        });
 
-      if (error) {
-        console.error("[email] Resend error:", error);
+        if (error) {
+          console.error("[email] Resend error:", error);
+          return { sent: false };
+        }
+
+        return { sent: true };
+      } catch (err) {
+        console.error("[email] unexpected error:", err);
         return { sent: false };
       }
-
-      return { sent: true };
-    } catch (err) {
-      console.error("[email] unexpected error:", err);
-      return { sent: false };
-    }
-  });
+    })
+);
