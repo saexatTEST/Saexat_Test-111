@@ -261,20 +261,6 @@ const [personNames, setPersonNames] = useState<PersonNames>({});
     [setExtraPersonsShared],
   );
   // Auto-expand rooms that have extra guests added by any user/browser
-  useEffect(() => {
-    setExpandedRooms((prev) => {
-      const next = { ...prev };
-      let changed = false;
-      for (const [roomNumStr, count] of Object.entries(extraPersons)) {
-        const roomNum = Number(roomNumStr);
-        if (count > 0 && !next[roomNum]) {
-          next[roomNum] = true;
-          changed = true;
-        }
-      }
-      return changed ? next : prev;
-    });
-  }, [extraPersons]);
   const [deletedPersonSlots, setDeletedPersonSlots] = useState<Record<number, Set<number>>>({});
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
   const [addCategoryOpen, setAddCategoryOpen] = useState(false);

@@ -16,6 +16,7 @@ import { HotelGridProvider } from "@/hooks/HotelGridContext";
 import { ThemeProvider } from "@/hooks/ThemeContext";
 import { I18nProvider } from "@/hooks/useI18n";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { AuthHistoryProvider } from "@/contexts/AuthHistoryContext";
 import { ShiftProvider } from "@/contexts/ShiftContext";
 import { AdminsProvider } from "@/contexts/AdminsContext";
 import { AuditProvider } from "@/contexts/AuditContext";
@@ -86,28 +87,28 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
   head: () => ({
     meta: [
-  { charSet: "utf-8" },
-  { name: "viewport", content: "width=device-width, initial-scale=1" },
-  { title: "Отель Саёхат — управление" },
-  {
-    name: "description",
-    content: "Панель управления номерами, бронированиями и сменами отеля Саёхат.",
-  },
-  { property: "og:title", content: "Отель Саёхат — управление" },
-  {
-    property: "og:description",
-    content: "Панель управления номерами, бронированиями и сменами отеля Саёхат.",
-  },
-  { property: "og:image", content: "" },
-  { property: "og:type", content: "website" },
-  { name: "twitter:title", content: "Отель Саёхат — управление" },
-  {
-    name: "twitter:description",
-    content: "Панель управления номерами, бронированиями и сменами отеля Саёхат.",
-  },
-  { name: "twitter:image", content: "" },
-  { name: "twitter:card", content: "summary" },
-],
+      { charSet: "utf-8" },
+      { name: "viewport", content: "width=device-width, initial-scale=1" },
+      { title: "Отель Саёхат — управление" },
+      {
+        name: "description",
+        content: "Панель управления номерами, бронированиями и сменами отеля Саёхат.",
+      },
+      { property: "og:title", content: "Отель Саёхат — управление" },
+      {
+        property: "og:description",
+        content: "Панель управления номерами, бронированиями и сменами отеля Саёхат.",
+      },
+      { property: "og:image", content: "" },
+      { property: "og:type", content: "website" },
+      { name: "twitter:title", content: "Отель Саёхат — управление" },
+      {
+        name: "twitter:description",
+        content: "Панель управления номерами, бронированиями и сменами отеля Саёхат.",
+      },
+      { name: "twitter:image", content: "" },
+      { name: "twitter:card", content: "summary" },
+    ],
     links: [
       {
         rel: "stylesheet",
@@ -148,17 +149,19 @@ function RootComponent() {
             <ToastAutoDismiss />
             <AdminsProvider>
               <AuditProvider>
-                <AuthProvider>
-                  <UserLanguageSync />
-                  <BookingsProvider>
-                    <HotelGridProvider>
-                      <ShiftProvider>
-                        <ShiftWatcher />
-                        <PageTransition />
-                      </ShiftProvider>
-                    </HotelGridProvider>
-                  </BookingsProvider>
-                </AuthProvider>
+                <AuthHistoryProvider>
+                  <AuthProvider>
+                    <UserLanguageSync />
+                    <BookingsProvider>
+                      <HotelGridProvider>
+                        <ShiftProvider>
+                          <ShiftWatcher />
+                          <PageTransition />
+                        </ShiftProvider>
+                      </HotelGridProvider>
+                    </BookingsProvider>
+                  </AuthProvider>
+                </AuthHistoryProvider>
               </AuditProvider>
             </AdminsProvider>
           </TooltipProvider>

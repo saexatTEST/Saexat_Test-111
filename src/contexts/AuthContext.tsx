@@ -1,25 +1,24 @@
-import { createContext, useContext, useEffect, useState, useCallback, useMemo, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  useCallback,
+  useMemo,
+  type ReactNode,
+} from "react";
 import { useAdmins } from "./AdminsContext";
 import { useAudit } from "./AuditContext";
+import { useAuthHistory } from "./AuthHistoryContext";
+import type { UserRole, LoginEvent } from "./auth-types";
 
-export type UserRole = "superuser" | "director" | "admin" | "manager";
+// Re-export so all existing imports of UserRole and LoginEvent from AuthContext keep working
+export type { UserRole, LoginEvent };
 
 interface AuthUser {
   username: string;
   role: UserRole;
   canSwitchWorkspaces?: boolean;
-  /** Set when an admin signs in via the registry — links every action to the AdminRecord. */
-  adminId?: string | null;
-  /** Display name (e.g. "Akmal Karimov"). Falls back to username. */
-  displayName?: string;
-}
-
-export interface LoginEvent {
-  id: string;
-  username: string;
-  role: UserRole;
-  action: "login" | "logout";
-  at: string;
   adminId?: string | null;
   displayName?: string;
 }
@@ -35,10 +34,7 @@ interface AuthContextValue {
 }
 
 const STORAGE_KEY = "hotel_auth_user";
-const HISTORY_KEY = "hotel_auth_history";
-const HISTORY_EVENT = "hotel-auth-history-changed";
 
-/** Built-in master credentials. Admins use their per-record username/password. */
 const CREDENTIALS: Record<string, { password: string; role: UserRole }> = {
   superuser: { password: "superuser", role: "superuser" },
   director: { password: "director", role: "director" },
@@ -48,39 +44,28 @@ const CREDENTIALS: Record<string, { password: string; role: UserRole }> = {
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
-function loadHistory(): LoginEvent[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = window.localStorage.getItem(HISTORY_KEY);
-    return raw ? (JSON.parse(raw) as LoginEvent[]) : [];
-  } catch {
-    return [];
-  }
-}
-
-function pushHistory(ev: Omit<LoginEvent, "id">) {
-  if (typeof window === "undefined") return;
-  const list = loadHistory();
-  list.unshift({ ...ev, id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}` });
-  const capped = list.slice(0, 500);
-  window.localStorage.setItem(HISTORY_KEY, JSON.stringify(capped));
-  window.dispatchEvent(new Event(HISTORY_EVENT));
-}
-
 export function AuthProvider({ children }: { children: ReactNode }) {
   const { findByUsername } = useAdmins();
   const { log } = useAudit();
+  const { history, pushHistory, clearHistory } = useAuthHistory();
+
   const [ready, setReady] = useState(false);
   const [user, setUser] = useState<AuthUser | null>(null);
 
-  const [history, setHistory] = useState<LoginEvent[]>(() => loadHistory());
-
+  // Restore session from sessionStorage on mount
   useEffect(() => {
     try {
-      // Session-only persistence: closing the tab clears the session so the user must re-enter credentials.
       const raw = sessionStorage.getItem(STORAGE_KEY);
       const parsed = raw ? (JSON.parse(raw) as AuthUser) : null;
-      setUser(parsed ? { ...parsed, canSwitchWorkspaces: parsed.canSwitchWorkspaces || parsed.username === "superuser" } : null);
+      setUser(
+        parsed
+          ? {
+              ...parsed,
+              canSwitchWorkspaces:
+                parsed.canSwitchWorkspaces || parsed.username === "superuser",
+            }
+          : null,
+      );
       // Clean up any legacy persisted session from localStorage.
       try { localStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
     } catch {
@@ -90,14 +75,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // Persist current session to sessionStorage
   useEffect(() => {
     if (user) sessionStorage.setItem(STORAGE_KEY, JSON.stringify(user));
     else sessionStorage.removeItem(STORAGE_KEY);
   }, [user]);
 
-  // Auto-logout when the browser/tab is closed: record a logout history
-  // entry for the currently signed-in user and clear their session.
-  // `pagehide` fires reliably on tab/window close in all modern browsers.
+  // Auto-logout record when the browser tab/window is closed
   useEffect(() => {
     if (typeof window === "undefined") return;
     const handler = () => {
@@ -120,29 +104,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       window.removeEventListener("pagehide", handler);
       window.removeEventListener("beforeunload", handler);
     };
-  }, [user]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    // Always re-read after mount so SSR-hydrated state (which starts empty
-    // because localStorage is not available during SSR) is replaced with
-    // the real persisted history. Without this the panel intermittently
-    // appears empty even though entries exist in storage.
-    setHistory(loadHistory());
-    const refresh = () => setHistory(loadHistory());
-    const onStorage = (e: StorageEvent) => {
-      if (e.key === HISTORY_KEY) refresh();
-    };
-    const onFocus = () => refresh();
-    window.addEventListener("storage", onStorage);
-    window.addEventListener(HISTORY_EVENT, refresh as EventListener);
-    window.addEventListener("focus", onFocus);
-    return () => {
-      window.removeEventListener("storage", onStorage);
-      window.removeEventListener(HISTORY_EVENT, refresh as EventListener);
-      window.removeEventListener("focus", onFocus);
-    };
-  }, []);
+  }, [user, pushHistory]);
 
   const login: AuthContextValue["login"] = useCallback(
     (username, password) => {
@@ -159,8 +121,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         };
         setUser(next);
         const at = new Date().toISOString();
-        pushHistory({ username: next.username, role: "admin", action: "login", at, adminId: admin.id, displayName: next.displayName });
-        setHistory(loadHistory());
+        pushHistory({
+          username: next.username,
+          role: "admin",
+          action: "login",
+          at,
+          adminId: admin.id,
+          displayName: next.displayName,
+        });
         log({
           actor: { username: next.username, role: "admin", adminId: admin.id },
           category: "auth",
@@ -175,11 +143,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!entry || entry.password !== password) {
         return { ok: false, error: "Invalid username or password" };
       }
-      const next: AuthUser = { username: u, role: entry.role, displayName: u, canSwitchWorkspaces: entry.role === "superuser" };
+      const next: AuthUser = {
+        username: u,
+        role: entry.role,
+        displayName: u,
+        canSwitchWorkspaces: entry.role === "superuser",
+      };
       setUser(next);
       const at = new Date().toISOString();
-      pushHistory({ username: u, role: entry.role, action: "login", at, displayName: u });
-      setHistory(loadHistory());
+      pushHistory({
+        username: u,
+        role: entry.role,
+        action: "login",
+        at,
+        displayName: u,
+      });
       log({
         actor: { username: u, role: entry.role },
         category: "auth",
@@ -188,7 +166,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
       return { ok: true, role: entry.role };
     },
-    [findByUsername, log],
+    [findByUsername, log, pushHistory],
   );
 
   const logout = useCallback(() => {
@@ -202,7 +180,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         adminId: user.adminId,
         displayName: user.displayName,
       });
-      setHistory(loadHistory());
       log({
         actor: { username: user.username, role: user.role, adminId: user.adminId },
         category: "auth",
@@ -211,11 +188,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
     }
     setUser(null);
-  }, [user, log]);
+  }, [user, log, pushHistory]);
 
   const switchRole = useCallback((role: UserRole) => {
     if (!user?.canSwitchWorkspaces) return;
-    const next: AuthUser = { username: user.username, role, displayName: role, canSwitchWorkspaces: true };
+    const next: AuthUser = {
+      username: user.username,
+      role,
+      displayName: role,
+      canSwitchWorkspaces: true,
+    };
     setUser(next);
     log({
       actor: { username: user.username, role: user.role, adminId: user.adminId },
@@ -224,13 +206,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       summary: `Switched workspace to ${role}`,
     });
   }, [user, log]);
-
-  const clearHistory = useCallback(() => {
-    if (typeof window === "undefined") return;
-    window.localStorage.removeItem(HISTORY_KEY);
-    window.dispatchEvent(new Event(HISTORY_EVENT));
-    setHistory([]);
-  }, []);
 
   const value = useMemo(
     () => ({ user, ready, login, switchRole, logout, history, clearHistory }),
